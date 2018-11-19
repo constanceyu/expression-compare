@@ -15,35 +15,17 @@
         [(or (and (not (equal? (car x) 'let)) (equal? (car y) 'let))
          (and (equal? (car x) 'let) (not (equal? (car y) 'let))))
             (list 'if '% x y)]
-        ; [(and (equal? (car x) 'let) (equal? (car y) 'let))
-        ;  (if (= (length (cadr x)) (length (cadr y)))
-        ;      (let ((bind (check-let (cadr x) (cadr y) '() '() '())))
-        ;         (display bind)
-        ;         (cons 'let (expr-compare 
-        ;             (cons 
-        ;                 (replace-first (cadr x) (car bind) (caddr bind))
-        ;                 (replace (cddr x) (cddr y) (car bind) (caddr bind))
-        ;             )
-        ;             (cons 
-        ;                 (replace-first (cadr y) (cadr bind) (caddr bind))            
-        ;                 (replace (cddr y) (cddr x) (cadr bind) (caddr bind))
-        ;             )
-        ;         ))
-        ;     )
-        ;     (list 'if '% x y)
-        ; )]
         [(and (equal? (car x) 'let) (equal? (car y) 'let))
          (if (= (length (cadr x)) (length (cadr y)))
              (let ((bind (check-let (cadr x) (cadr y) '() '() '())))
-                (display bind)
                 (cons 'let (expr-compare 
                     (cons 
                         (replace-first (cadr x) (car bind) (caddr bind))
-                        (replace (cddr x) (car bind) (caddr bind))
+                        (replace-all (cddr x) (car bind) (caddr bind))
                     )
                     (cons 
                         (replace-first (cadr y) (cadr bind) (caddr bind))            
-                        (replace (cddr y) (cadr bind) (caddr bind))
+                        (replace-all (cddr y) (cadr bind) (caddr bind))
                     )
                 ))
             )
@@ -61,8 +43,8 @@
             (let ((bind (check-lambda (cadr x) (cadr y) '() '() '()))) 
                 (cons 'lambda
                     (expr-compare
-                        (replace (cdr x) (car bind) (caddr bind)) 
-                        (replace (cdr y) (cadr bind) (caddr bind))
+                        (replace-all (cdr x) (car bind) (caddr bind)) 
+                        (replace-all (cdr y) (cadr bind) (caddr bind))
                     )
                 )
             )
@@ -121,21 +103,15 @@
     )
 )
 
-(define (replace expr ele lxy)
-    ; (display "expr: ")
-    ; (display expr)
-    ; (display "expr1: ")
-    ; (display expr1)
-    ; (display "\n")
+(define (replace-all expr ele lxy)
     (cond
         [(empty? expr) expr]
-        [(list? (car expr)) (cons (replace (car expr) ele lxy) (replace (cdr expr) ele lxy))]
+        [(list? (car expr)) (cons (replace-all (car expr) ele lxy) (replace-all (cdr expr) ele lxy))]
         [(member (car expr) ele)
-            (cons (let ((i (index-of ele (car expr)))) (list-ref lxy i)) (replace (cdr expr) ele lxy))]
-        [else (cons (car expr) (replace (cdr expr) ele lxy))]
+            (cons (let ((i (index-of ele (car expr)))) (list-ref lxy i)) (replace-all (cdr expr) ele lxy))]
+        [else (cons (car expr) (replace-all (cdr expr) ele lxy))]
     )
 )
-
 
 (define (replace-first bind ele lxy)
     (cond 
@@ -143,5 +119,140 @@
         [(member (caar bind) ele)
             (cons (let ((i (index-of ele (caar bind) ))) (cons (list-ref lxy i) (cdar bind))) (replace-first (cdr bind) ele lxy ))]
         [else (cons (car bind) (replace-first (cdr bind) ele lxy))]
+    )
+)
+
+(define (test-expr-compare x y)
+    (let ((expr (expr-compare x y)))
+        (and
+            (equal?
+                (eval x)
+                (eval (list 'let '((% #t)) expr))
+            )
+            (equal?
+                (eval y)
+                (eval (list 'let '((% #f)) expr))
+            )
+        )
+    )
+)
+
+(define test-expr-x
+    (list
+        ; ===== base case =====
+        12
+        12
+        #t
+        #t
+        #f
+        #f
+        'a
+        'a
+        '"Hi"
+        '"Hi"
+        '(1 2 3)
+        '(1 2 3)
+        '(+ 1 2)
+        '(+ 1 2)
+        '(+ 1 2)
+        '(+ a b)
+        '(+ a b)
+        '(- 9 (+ 1 2))
+        '(- 9 (+ 1 2))
+        '(- 9 (+ 1 2))
+        '(+ #f (let ((a 1) (b 2)) (f a b)))
+        ; ===== quote =====
+        ''(1 2)
+        ''(1 2)
+        '(quote (1 2))
+        '(quote (1 2))
+        '(quote (1 2))
+        ; ===== lambda =====
+        '(lambda (x y) (+ x y))
+        '(lambda (x y) (+ x y))
+        '(lambda (x y) (+ x y))
+        '(lambda (x y) (+ x y))
+        '((lambda (a) (f a)) 1)
+        ; ===== let =====
+        '(let ((x y)) (+ x 1))
+        '(let ((x y)) (+ x 1))
+        '(let ((x y)) (+ x 1))
+        '(let ((x y)) x)
+        '(let ((x y)) x)
+        '(let ((a 1)) (f a))
+        ; ===== conditional =====
+        '(if x y z)
+        '(if x y z)
+        '(if x y z)
+        '(if x y z)
+        '(if x (if y a b) z)
+        '(if x (if y a b) z)
+        ; ===== examples =====
+        'a
+        '(cons a b)
+        '(cons a b)
+        '(cons (cons a b) (cons b c))
+        '(cons a b)
+        '(list)
+        ''(a b)
+        '(quote (a b))
+        '(quoth (a b))
+    )
+)
+
+(define test-expr-y
+    (list
+        12
+        20
+        #t
+        #f
+        #t
+        #f
+        'a
+        'b
+        '"Hi"
+        '"Hello"
+        '(1 2 3)
+        '(2 3 1)
+        '(+ 1 2)
+        '(+ 1 3)
+        '(- 1 2)
+        '(+ a b)
+        '(+ a c)
+        '(- 9 (+ 1 2))
+        '(+ 9 (- 1 2))
+        '(- 8 (+ 1 2))
+        '(+ #t (let ((a 1) (c 2)) (f a c)))
+        ''(1 2)
+        ''(2 1)
+        '(quote (1 2))
+        '(quote (3 4))
+        'hihihi
+        '(lambda (x z) (+ x z))
+        '(lambda (x y) (* x y))
+        '(lambda (z y) (+ x y))
+        '(lambda (z y) (+ z y))
+        '((lambda (a) (g a)) 2)
+        '(let ((x y)) (+ x 1))
+        '(let ((x z)) (+ x 1))
+        '(let ((z y)) (+ z 1))
+        '(let ((x y)) x)
+        '(let ((z y)) z)
+        '(let ((a 2)) (g a))
+        '(if x y z)
+        '(if a y z)
+        '(if x z y)
+        '(if z x y)
+        '(if x (if y a b) z)
+        '(if x (if a y b) z)
+        '(cons a b)
+        '(cons a b)
+        '(cons a c)
+        '(cons (cons a c) (cons a c))
+        '(list a b)
+        '(list a)
+        ''(a c)
+        '(quote (a c))
+        '(quoth (a c))
     )
 )
